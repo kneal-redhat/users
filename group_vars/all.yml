@@ -1,0 +1,7 @@
+automation_controller_user: admin
+automation_controller_pass: redhat123
+automation_controller_host: controller.aaphrpij2grr4s3i.ansiblecloud.redhat.com
+
+hub_user: admin
+hub_password: redhat123
+hub_host: hub.aaphrpij2grr4s3i.ansiblecloud.redhat.com

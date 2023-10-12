@@ -1,0 +1,12 @@
+---
+- name: Automation Controller API
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    automation_controller_user: admin
+    automation_controller_pass: redhat123
+    automation_controller_host: controller.aaphrpij2grr4s3i.ansiblecloud.redhat.com
+
+  roles:
+    - role: list_inventory_access

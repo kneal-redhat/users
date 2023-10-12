@@ -1,0 +1,62 @@
+---
+- name: Set AAP controller facts
+  ansible.builtin.set_fact:
+    username_password: "{{ automation_controller_user }}:{{ automation_controller_pass }}"
+    all_admins: []
+    all_admins_roles: []
+
+
+- name: Get list of controller admin users
+  ansible.builtin.uri:
+    url: "https://{{ automation_controller_host }}/api/v2/users/"
+    method: GET
+    body_format: json
+    headers:
+      Authorization: Basic {{ username_password | string | b64encode }}
+      Content-Type: "application/json"
+    validate_certs: false
+  register: userlist
+
+- name: Set all user Ids (select all userId)
+  ansible.builtin.set_fact:
+    all_users_id_name: "{{ userlist['json']['results']  | items2dict(key_name='id', value_name='username' )  }}"
+
+
+- name: Get list of   users roles for each user
+  ansible.builtin.uri:
+    url: "https://{{ automation_controller_host }}/api/v2/users/{{ item.key }}/roles/"
+    method: GET
+    body_format: json
+    headers:
+      Authorization: Basic {{ username_password | string | b64encode }}
+      Content-Type: "application/json"
+    validate_certs: false
+  register: user_roles
+  with_dict: "{{ all_users_id_name }}"
+
+# - name: Display usernames, role type, roles
+#   ansible.builtin.debug:
+#     msg: |
+#       Username: {{ item.item.value }}. Number of Roles: {{ item.json.count }}. 
+#       Role Type: {{ item.json.results | map(attribute='type') }}.
+#       Roles: {{ item.json.results | map(attribute='name') }}.
+#   loop: "{{ user_roles['results'] | list }}"
+
+- name: If user has a role of System Administrator, add to this fact list
+  ansible.builtin.set_fact:
+    all_admins: "{{ all_admins + [item.item.value] }}"
+  when: "'System Administrator' in (item.json.results | map(attribute='name'))"
+  loop: "{{ user_roles['results'] | list }}" 
+
+- name: Show users that have role of System Administrator
+  ansible.builtin.debug:
+    msg: "{{ all_admins }}"
+
+- name: Display usernames, role type for SysAdmins only
+  ansible.builtin.debug:
+     msg: |
+       Username: {{item. item.value }}. Number of Roles: {{ item.json.count }}. 
+       Roles: {{ item.json.results | map(attribute='name') }}.
+  #when: item.json.results | list | selectattr( "name" , "eq", "System Administrator")
+  when: "'System Administrator' in (item.json.results | map(attribute='name'))"
+  loop: "{{ user_roles['results'] | list }}"

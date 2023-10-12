@@ -1,0 +1,86 @@
+---
+- name: Retrieve users with Execute & Admin roles on Job Templates
+  ansible.builtin.set_fact:
+    username_password: "{{ automation_controller_user }}:{{ automation_controller_pass }}"
+    resource_update_access_list: []
+    user_access_list: []
+    job_template_admin_list: []
+    users_job_template_admin_access: []
+
+- name: Get list of controller admin users
+  ansible.builtin.uri:
+    url: "https://{{ automation_controller_host }}/api/v2/users/"
+    method: GET
+    body_format: json
+    headers:
+      Authorization: Basic {{ username_password | string | b64encode }}
+      Content-Type: "application/json"
+    validate_certs: false
+  register: userlist
+
+- name: Set all user Ids (select all userId)
+  ansible.builtin.set_fact:
+    all_users_id_name: "{{ userlist['json']['results']  | items2dict(key_name='id', value_name='username' )  }}"
+
+- name: Get list of controller  users roles for each user
+  ansible.builtin.uri:
+    url: "https://{{ automation_controller_host }}/api/v2/users/{{ item.key }}/roles/"
+    method: GET
+    body_format: json
+    headers:
+      Authorization: Basic {{ username_password | string | b64encode }}
+      Content-Type: "application/json"
+    validate_certs: false
+  register: user_roles
+  with_dict: "{{ all_users_id_name }}"
+
+- name: Build users job template resource access list
+  ansible.builtin.set_fact:
+    resource_update_access_list: "{{ resource_update_access_list + 
+                        [ {'user': item.item.value,
+                           'resource_name': item.json.results | map(attribute='summary_fields') |
+                               selectattr('resource_name', 'defined')  |  map(attribute='resource_name'),
+                           'resource': item.json.results | map(attribute='summary_fields') |
+                               selectattr('resource_type', 'defined')  |  map(attribute='resource_type'),
+                           'role' : item.json.results  |  map(attribute='name')
+                          }
+                        ]
+                    }}"
+  when: ( item.json.results  | 
+            selectattr('name', 'in' , ['Admin','Execute'])
+        )   
+        and 
+        ( item.json.results | map(attribute='summary_fields') |
+          selectattr('resource_type', 'defined')  |
+          selectattr('resource_type','eq', 'job_template') )
+  loop: "{{ user_roles['results'] | list }}" 
+
+- name: Combine user resource/access to one list
+  ansible.builtin.set_fact:
+    user_access_list: 
+      "{{ user_access_list + 
+          [ 
+            {
+              'user': item.user,
+              'resource': item.resource | zip(item.resource_name,item.role ) | list 
+            }
+          ]
+      }}"
+  loop:
+    "{{ resource_update_access_list }}"
+
+- name: Build users JOB TEMPLATE with Admin/Execute access
+  ansible.builtin.set_fact:
+    users_job_template_admin_access: "{{ users_job_template_admin_access + [ item.0.user ,item.1 ] }}"
+  when: 
+    - "'job_template' in item.1 "
+    - "'Execute' in item.1 or 'Admin' in item.1"
+  loop: "{{ user_access_list | subelements('resource')  }}"
+  loop_control:
+    label: "{{ item.0.user }}"
+
+- name: Display users with Execute & Admin roles on job templates
+  ansible.builtin.debug:
+    msg: "{{ users_job_template_admin_access }}"
+
+
